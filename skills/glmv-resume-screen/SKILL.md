@@ -5,6 +5,16 @@ description:
   Reads multiple resume files (PDF/DOCX/TXT), compares against user-defined screening
   criteria, and outputs a Markdown table with pass/fail analysis. Use when the user
   wants to filter resumes, compare candidates, or batch-evaluate job applications.
+metadata:
+  openclaw:
+    requires:
+      env:
+        - ZHIPU_API_KEY
+      bins:
+        - python
+    primaryEnv: ZHIPU_API_KEY
+    emoji: "🧾"
+    homepage: https://github.com/zai-org/GLM-V/tree/main/skills/glmv-resume-screen
 ---
 
 # GLM-V Resume Screening Skill

@@ -5,6 +5,16 @@ description:
   text-to-video AI tools (Midjourney, Stable Diffusion, DALL-E, Sora, Runway, Kling, Pika).
   Use when the user wants to generate prompts from reference images/videos, create
   AI art prompts, or get prompt engineering suggestions from visual content.
+metadata:
+   openclaw:
+      requires:
+         env:
+            - ZHIPU_API_KEY
+         bins:
+            - python
+      primaryEnv: ZHIPU_API_KEY
+      emoji: "✨"
+      homepage: https://github.com/zai-org/GLM-V/tree/main/skills/glmv-prompt-gen
 ---
 
 # GLM-V Prompt Generation Skill

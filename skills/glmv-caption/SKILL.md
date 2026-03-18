@@ -5,6 +5,16 @@ description:
   GLM-V multimodal model series. Use this skill whenever the user wants to describe,
   caption, summarize, or interpret the content of images, videos, or files.
   Supports single/multiple inputs, URLs, local paths, and base64 (images only).
+metadata:
+  openclaw:
+    requires:
+      env:
+        - ZHIPU_API_KEY
+      bins:
+        - python
+    primaryEnv: ZHIPU_API_KEY
+    emoji: "🖼️"
+    homepage: https://github.com/zai-org/GLM-V/tree/main/skills/glmv-caption
 ---
 
 # GLM-V Caption Skill
