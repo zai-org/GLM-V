@@ -1,7 +1,16 @@
 ---
-name: pdf-to-ppt
-description: Convert a PDF (research paper, report, or any document) into a polished multi-slide HTML presentation with a structured outline JSON and summary markdown. Trigger this skill when the user mentions making slides or a PPT from a PDF — in Chinese or English.
-version: 2.0.0
+name: glmv-pdf-to-ppt
+description:
+  Convert a PDF (research paper, report, or any document) into a polished multi-slide
+  HTML presentation with a structured outline JSON and summary markdown. Trigger this
+  skill when the user mentions making slides or a PPT from a PDF — in Chinese or English.
+metadata:
+  openclaw:
+    requires:
+      bins:
+        - python
+    emoji: "📑"
+    homepage: https://github.com/zai-org/GLM-V/tree/main/skills/glmv-pdf-to-ppt
 ---
 
 # PDF → HTML PPT Skill

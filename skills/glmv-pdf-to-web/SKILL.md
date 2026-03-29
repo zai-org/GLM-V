@@ -1,7 +1,17 @@
 ---
-name: pdf-to-web
-description: Convert a PDF (research paper, technical report, or project document) into a beautiful single-page academic/project website with a structured outline JSON. Trigger this skill when the user wants to make a paper page, project homepage, or academic website from a PDF — in Chinese or English.
-version: 2.0.0
+name: glmv-pdf-to-web
+description:
+  Convert a PDF (research paper, technical report, or project document) into a beautiful
+  single-page academic/project website with a structured outline JSON. Trigger this
+  skill when the user wants to make a paper page, project homepage, or academic website
+  from a PDF — in Chinese or English.
+metadata:
+  openclaw:
+    requires:
+      bins:
+        - python
+    emoji: "🌐"
+    homepage: https://github.com/zai-org/GLM-V/tree/main/skills/glmv-pdf-to-web
 ---
 
 # PDF → Academic Project Website Skill
