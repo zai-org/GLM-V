@@ -22,7 +22,7 @@ from typing import List, Optional, Dict, Any
 
 import requests
 
-DEFAULT_MODEL = "glm-4.6v"
+DEFAULT_MODEL = "glm-5v-turbo"
 API_BASE_URL = "https://open.bigmodel.cn/api/paas/v4/chat/completions"
 
 # Model max_tokens limits (per official docs)

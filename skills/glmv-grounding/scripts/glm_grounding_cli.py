@@ -26,8 +26,6 @@ from urllib.parse import urlparse
 from utils_boxes import (
     parse_coordinates_from_response,
     visualize_boxes,
-    visualize_points,
-    visualize_polys,
 )
 from utils_detection import parse_detection_from_response
 from utils_video import parse_mot_from_response, visualize_mot
@@ -53,6 +51,7 @@ logger = logging.getLogger(__name__)
 # =============================================================================
 
 DEFAULT_TIMEOUT = 60  # seconds
+DEFAULT_MODEL = "glm-5v-turbo"
 API_GUIDE_URL = "https://open.bigmodel.cn/usercenter/apikeys"
 DEFAULT_API_URL = "https://open.bigmodel.cn/api/paas/v4/chat/completions"
 
@@ -301,7 +300,7 @@ def _make_api_request(api_url: str, api_key: str, payload: dict) -> dict:
 def get_grounding_results(
     image: str | None,
     prompt: str,
-    model: str = "glm-4.6v",
+    model: str = DEFAULT_MODEL,
     video: str | None = None,
     visualize: bool = False,
     visualization_dir: str | None = None,
