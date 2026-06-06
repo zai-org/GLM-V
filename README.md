@@ -73,12 +73,12 @@ see [Fixed and Remaining Issues](#fixed-and-remaining-issues).
 
 + Hugging Face provides GGUF format model weights. You can download the GGUF format model of GLM-V from [here](https://huggingface.co/collections/ggml-org/glm-v).
 
-## Using Case
+## Use Cases
 
 ### Grounding
 
-GLM-4.5V / GLM-4.6V / GLM-4.1V equips precise grounding capabilities. Given a prompt that requests the location of a specific object, the model
-is able to reasoning step-by-step and identify the bounding boxes of the target object. The query prompt supports
+GLM-4.5V / GLM-4.6V / GLM-4.1V have precise grounding capabilities. Given a prompt that requests the location of a specific object, the model
+is able to reason step-by-step and identify the bounding boxes of the target object. The query prompt supports
 complex descriptions of the target object as well as specified output formats, for example:
 >
 > - Help me to locate <expr> in the image and give me its bounding boxes.
