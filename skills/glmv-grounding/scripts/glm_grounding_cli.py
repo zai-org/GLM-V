@@ -203,11 +203,18 @@ def _encode_file(file_path: str) -> tuple[str, str]:
 def load_media_bytes(source: str):
     """Get bytes for a media URL or local file path."""
     if _is_url(source):
-        ok, reason = _is_public_url(source)
+        try:
+            request_url = requests.Request("GET", source).prepare().url
+        except Exception as e:
+            return None, f"Failed to prepare image URL: {e}"
+        if not request_url:
+            return None, "Failed to prepare image URL"
+
+        ok, reason = _is_public_url(request_url)
         if not ok:
             return None, f"Rejected URL for security reasons: {reason}"
         try:
-            resp = requests.get(source, timeout=10)
+            resp = requests.get(request_url, timeout=10)
             resp.raise_for_status()
             return resp.content, ""
         except Exception as e:
