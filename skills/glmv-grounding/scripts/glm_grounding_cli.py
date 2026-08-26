@@ -17,6 +17,7 @@ import json
 import logging
 import mimetypes
 import os
+import re
 import socket
 import sys
 from pathlib import Path
@@ -140,11 +141,23 @@ def _is_url(path: str) -> bool:
 
 
 def _is_public_url(url: str) -> tuple[bool, str]:
-    """Validate URL is http/https and not localhost/private network target."""
+    """Validate URL is http/https and not localhost/private network target.
+
+    Defense against parser-differential SSRF (e.g. "http://127.0.0.1\\@1.1.1.1",
+    where urllib.parse sees host 1.1.1.1 but requests connects to 127.0.0.1):
+    URLs containing characters that the two parsers may treat differently are
+    rejected outright, and the hostname must resolve exclusively to public IPs.
+    """
     try:
         parsed = urlparse(url)
         if parsed.scheme not in ("http", "https") or not parsed.netloc:
             return False, "Only http/https URLs are supported"
+
+        # Reject characters on which urllib.parse and requests/urllib3 may
+        # disagree about the target authority (backslash, whitespace, and
+        # other control characters).
+        if re.search(r"[\\\t\n\r\f\v ]", url):
+            return False, "URL contains disallowed control or whitespace characters"
 
         host = parsed.hostname
         if not host:
@@ -153,6 +166,11 @@ def _is_public_url(url: str) -> tuple[bool, str]:
         host_l = host.lower()
         if host_l in {"localhost", "127.0.0.1", "::1"}:
             return False, "Localhost URLs are not allowed"
+
+        # A trailing dot is legal DNS root syntax but is stripped inconsistently
+        # by resolvers; reject it so validation and connection agree.
+        if host_l != host_l.rstrip("."):
+            return False, "URL host contains a trailing dot"
 
         # Resolve and block private/link-local/loopback/reserved addresses.
         infos = socket.getaddrinfo(host, None)
@@ -171,6 +189,15 @@ def _is_public_url(url: str) -> tuple[bool, str]:
         return True, ""
     except Exception as e:
         return False, f"URL validation failed: {e}"
+
+
+def _reject_unsafe_redirect(response: Any, *args: Any, **kwargs: Any) -> None:
+    """requests hook that re-validates every hop against SSRF rules."""
+    ok, reason = _is_public_url(str(response.url))
+    if not ok:
+        raise requests.RequestException(
+            f"Redirect blocked for security reasons: {reason}"
+        )
 
 
 def _encode_file(file_path: str) -> tuple[str, str]:
@@ -207,7 +234,12 @@ def load_media_bytes(source: str):
         if not ok:
             return None, f"Rejected URL for security reasons: {reason}"
         try:
-            resp = requests.get(source, timeout=10)
+            resp = requests.get(
+                source,
+                timeout=10,
+                allow_redirects=True,
+                hooks={"response": [_reject_unsafe_redirect]},
+            )
             resp.raise_for_status()
             return resp.content, ""
         except Exception as e:
