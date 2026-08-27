@@ -155,8 +155,11 @@ def _is_public_url(url: str) -> tuple[bool, str]:
 
         # Reject characters on which urllib.parse and requests/urllib3 may
         # disagree about the target authority (backslash, whitespace, and
-        # other control characters).
-        if re.search(r"[\\\t\n\r\f\v ]", url):
+        # control characters), including when percent-encoded.
+        from urllib.parse import unquote
+
+        disallowed = re.compile(r"[\\\t\n\r\f\v \x00-\x1f\x7f]")
+        if disallowed.search(url) or disallowed.search(unquote(url)):
             return False, "URL contains disallowed control or whitespace characters"
 
         host = parsed.hostname
