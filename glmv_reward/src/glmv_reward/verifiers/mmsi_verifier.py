@@ -81,7 +81,7 @@ class MmsiVerifier(Verifier):
         extracted_answer: Any,
         ground_truth: Any,
         question: Optional[str] = None,
-        image_paths: Optional[str] = None,
+        image_file: Optional[str] = None,
     ) -> float:
         if not isinstance(extracted_answer, str) or not isinstance(ground_truth, str):
             _logger.warning(
@@ -127,7 +127,7 @@ class MmsiVerifier(Verifier):
             # logging configuration is in place, replace them with calls to the standard
             # `logging` module (e.g. logger.warning / logger.info / logger.debug).
             if self.enable_llm_judge_fallback:
-                return self._llm_judge_fallback(extracted_answer, ground_truth, question, image_paths)
+                return self._llm_judge_fallback(extracted_answer, ground_truth, question, image_file)
             return self.min_reward  # If sympy must pass or no fallback (or fallback disabled)
         else:
             # If they are relations (e.g. x > 0)

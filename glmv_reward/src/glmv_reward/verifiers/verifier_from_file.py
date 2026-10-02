@@ -54,8 +54,8 @@ class FileBasedVerifier(Verifier):
         extracted_answer: Any,
         ground_truth: Any,  # This will also be an "extracted" ground truth
         question: Optional[str] = None,
-        image_path: Optional[List[str]] = None,
+        image_file: Optional[List[str]] = None,
     ) -> float:
         if not self.load_once:
             self.load_judge_function()
-        return self.judge_func(extracted_answer, ground_truth, question, image_path)
+        return self.judge_func(extracted_answer, ground_truth, question, image_file)

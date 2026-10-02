@@ -74,7 +74,7 @@ class CountingVerifier(Verifier):
         extracted_answer: Any,
         ground_truth: Any,
         question: Optional[str] = None,
-        image_path: Optional[str] = None,
+        image_file: Optional[str] = None,
         debug: bool = False,
     ) -> float:
         if debug:
@@ -102,7 +102,7 @@ class CountingVerifier(Verifier):
             and self.llm_judge_url is not None
             and self.llm_judge_prompt_template is not None
         ):
-            return self._llm_judge_fallback(extracted_answer, ground_truth, question, image_path)
+            return self._llm_judge_fallback(extracted_answer, ground_truth, question, image_file)
 
         return self.min_reward
 
