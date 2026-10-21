@@ -17,10 +17,15 @@ IR 文档获取 + PDF 关键页面提取
 """
 
 import argparse
+import ipaddress
 import json
 import os
+import re
+import socket
 import sys
+import urllib.error
 import urllib.request
+from urllib.parse import unquote, urlparse
 
 try:
     import fitz  # pymupdf
@@ -29,8 +34,71 @@ except ImportError:
     sys.exit(1)
 
 
+def _is_public_url(url: str) -> tuple[bool, str]:
+    """Validate URL is http/https and not localhost/private network target.
+
+    Defense against parser-differential SSRF (e.g. "http://127.0.0.1\\@1.1.1.1",
+    where urllib.parse sees host 1.1.1.1 but urllib.request connects to
+    127.0.0.1): URLs containing characters that the two parsers may treat
+    differently are rejected outright, and the hostname must resolve
+    exclusively to public IPs.
+    """
+    try:
+        parsed = urlparse(url)
+        if parsed.scheme not in ("http", "https") or not parsed.netloc:
+            return False, "Only http/https URLs are supported"
+
+        disallowed = re.compile(r"[\\\t\n\r\f\v \x00-\x1f\x7f]")
+        if disallowed.search(url) or disallowed.search(unquote(url)):
+            return False, "URL contains disallowed control or whitespace characters"
+
+        host = parsed.hostname
+        if not host:
+            return False, "Invalid URL host"
+
+        host_l = host.lower()
+        if host_l in {"localhost", "127.0.0.1", "::1"}:
+            return False, "Localhost URLs are not allowed"
+
+        if host_l != host_l.rstrip("."):
+            return False, "URL host contains a trailing dot"
+
+        infos = socket.getaddrinfo(host, None)
+        for info in infos:
+            ip_str = info[4][0]
+            ip = ipaddress.ip_address(ip_str)
+            if (
+                ip.is_private
+                or ip.is_loopback
+                or ip.is_link_local
+                or ip.is_multicast
+                or ip.is_reserved
+                or ip.is_unspecified
+            ):
+                return False, f"URL resolves to non-public IP: {ip}"
+        return True, ""
+    except Exception as e:
+        return False, f"URL validation failed: {e}"
+
+
+class _SafeRedirectHandler(urllib.request.HTTPRedirectHandler):
+    """Re-validates every redirect hop against SSRF rules."""
+
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        ok, reason = _is_public_url(newurl)
+        if not ok:
+            raise urllib.error.URLError(
+                f"Redirect blocked for security reasons: {reason}"
+            )
+        return super().redirect_request(req, fp, code, msg, headers, newurl)
+
+
 def download_pdf(url: str, output_path: str, timeout: int = 30) -> bool:
     """下载 PDF 文件"""
+    ok, reason = _is_public_url(url)
+    if not ok:
+        print(f"  ❌ 已拒绝 URL: {reason}", file=sys.stderr)
+        return False
     try:
         req = urllib.request.Request(
             url,
@@ -38,7 +106,8 @@ def download_pdf(url: str, output_path: str, timeout: int = 30) -> bool:
                 "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36"
             },
         )
-        resp = urllib.request.urlopen(req, timeout=timeout)
+        opener = urllib.request.build_opener(_SafeRedirectHandler)
+        resp = opener.open(req, timeout=timeout)
         with open(output_path, "wb") as f:
             f.write(resp.read())
         size_mb = os.path.getsize(output_path) / 1e6
