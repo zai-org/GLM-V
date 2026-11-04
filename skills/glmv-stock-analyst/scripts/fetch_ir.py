@@ -17,6 +17,8 @@ IR 文档获取 + PDF 关键页面提取
 """
 
 import argparse
+import functools
+import http.client
 import ipaddress
 import json
 import os
@@ -34,7 +36,10 @@ except ImportError:
     sys.exit(1)
 
 
-def _is_public_url(url: str) -> tuple[bool, str]:
+_CGNAT_NETWORK = ipaddress.ip_network("100.64.0.0/10")
+
+
+def _is_public_url(url: str) -> tuple[bool, str, str]:
     """Validate URL is http/https and not localhost/private network target.
 
     Defense against parser-differential SSRF (e.g. "http://127.0.0.1\\@1.1.1.1",
@@ -42,27 +47,35 @@ def _is_public_url(url: str) -> tuple[bool, str]:
     127.0.0.1): URLs containing characters that the two parsers may treat
     differently are rejected outright, and the hostname must resolve
     exclusively to public IPs.
+
+    Returns (ok, reason, ip). On success ip is the first validated address;
+    the connection must be pinned to it to prevent DNS rebinding between
+    validation and the actual request.
     """
     try:
         parsed = urlparse(url)
         if parsed.scheme not in ("http", "https") or not parsed.netloc:
-            return False, "Only http/https URLs are supported"
+            return False, "Only http/https URLs are supported", ""
 
+        # Control characters are never legitimate anywhere. Backslash and
+        # whitespace are only rejected in the raw URL: a decoded %20 in the
+        # path is a valid PDF link.
         disallowed = re.compile(r"[\\\t\n\r\f\v \x00-\x1f\x7f]")
-        if disallowed.search(url) or disallowed.search(unquote(url)):
-            return False, "URL contains disallowed control or whitespace characters"
+        if disallowed.search(url) or re.search(r"[\x00-\x1f\x7f]", unquote(url)):
+            return False, "URL contains disallowed control or whitespace characters", ""
 
         host = parsed.hostname
         if not host:
-            return False, "Invalid URL host"
+            return False, "Invalid URL host", ""
 
         host_l = host.lower()
         if host_l in {"localhost", "127.0.0.1", "::1"}:
-            return False, "Localhost URLs are not allowed"
+            return False, "Localhost URLs are not allowed", ""
 
         if host_l != host_l.rstrip("."):
-            return False, "URL host contains a trailing dot"
+            return False, "URL host contains a trailing dot", ""
 
+        pinned_ip = ""
         infos = socket.getaddrinfo(host, None)
         for info in infos:
             ip_str = info[4][0]
@@ -74,28 +87,88 @@ def _is_public_url(url: str) -> tuple[bool, str]:
                 or ip.is_multicast
                 or ip.is_reserved
                 or ip.is_unspecified
+                or ip in _CGNAT_NETWORK
             ):
-                return False, f"URL resolves to non-public IP: {ip}"
-        return True, ""
+                return False, f"URL resolves to non-public IP: {ip}", ""
+            if not pinned_ip:
+                pinned_ip = ip_str
+        return True, "", pinned_ip
     except Exception as e:
-        return False, f"URL validation failed: {e}"
+        return False, f"URL validation failed: {e}", ""
+
+
+class _PinnedHTTPConnection(http.client.HTTPConnection):
+    """Connects to the validated IP while keeping the original Host header."""
+
+    def __init__(self, *args, pinned_ip: str = "", **kwargs):
+        super().__init__(*args, **kwargs)
+        self._pinned_ip = pinned_ip
+
+    def connect(self):
+        self.sock = socket.create_connection(
+            (self._pinned_ip, self.port), self.timeout, self.source_address)
+        self.sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
+        if self._tunnel_host:
+            self._tunnel()
+        sys.audit("http.client.connect", self, self.host, self.port)
+
+
+class _PinnedHTTPSConnection(http.client.HTTPSConnection):
+    """Like _PinnedHTTPConnection, with TLS verified against the real host."""
+
+    def __init__(self, *args, pinned_ip: str = "", **kwargs):
+        super().__init__(*args, **kwargs)
+        self._pinned_ip = pinned_ip
+
+    def connect(self):
+        self.sock = socket.create_connection(
+            (self._pinned_ip, self.port), self.timeout, self.source_address)
+        self.sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
+        if self._tunnel_host:
+            self._tunnel()
+        server_hostname = self._tunnel_host or self.host
+        self.sock = self._context.wrap_socket(self.sock, server_hostname=server_hostname)
+
+
+class _PinnedHTTPHandler(urllib.request.HTTPHandler):
+    def http_open(self, req):
+        pinned_ip = getattr(req, "pinned_ip", None)
+        if not pinned_ip:
+            raise urllib.error.URLError("Connection is not pinned to a validated IP")
+        return self.do_open(
+            functools.partial(_PinnedHTTPConnection, pinned_ip=pinned_ip), req)
+
+
+class _PinnedHTTPSHandler(urllib.request.HTTPSHandler):
+    def https_open(self, req):
+        pinned_ip = getattr(req, "pinned_ip", None)
+        if not pinned_ip:
+            raise urllib.error.URLError("Connection is not pinned to a validated IP")
+        return self.do_open(
+            functools.partial(_PinnedHTTPSConnection, pinned_ip=pinned_ip),
+            req,
+            context=self._context,
+        )
 
 
 class _SafeRedirectHandler(urllib.request.HTTPRedirectHandler):
     """Re-validates every redirect hop against SSRF rules."""
 
     def redirect_request(self, req, fp, code, msg, headers, newurl):
-        ok, reason = _is_public_url(newurl)
+        ok, reason, pinned_ip = _is_public_url(newurl)
         if not ok:
             raise urllib.error.URLError(
                 f"Redirect blocked for security reasons: {reason}"
             )
-        return super().redirect_request(req, fp, code, msg, headers, newurl)
+        new_req = super().redirect_request(req, fp, code, msg, headers, newurl)
+        if new_req is not None:
+            new_req.pinned_ip = pinned_ip
+        return new_req
 
 
 def download_pdf(url: str, output_path: str, timeout: int = 30) -> bool:
     """下载 PDF 文件"""
-    ok, reason = _is_public_url(url)
+    ok, reason, pinned_ip = _is_public_url(url)
     if not ok:
         print(f"  ❌ 已拒绝 URL: {reason}", file=sys.stderr)
         return False
@@ -106,7 +179,10 @@ def download_pdf(url: str, output_path: str, timeout: int = 30) -> bool:
                 "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36"
             },
         )
-        opener = urllib.request.build_opener(_SafeRedirectHandler)
+        req.pinned_ip = pinned_ip
+        opener = urllib.request.build_opener(
+            _PinnedHTTPHandler, _PinnedHTTPSHandler, _SafeRedirectHandler
+        )
         resp = opener.open(req, timeout=timeout)
         with open(output_path, "wb") as f:
             f.write(resp.read())
